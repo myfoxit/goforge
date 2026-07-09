@@ -1,0 +1,17 @@
+# binaries
+/forge
+/dist/
+*.exe
+
+# app data
+forge_data/
+*.db
+*.db-wal
+*.db-shm
+
+# node
+node_modules/
+.svelte-kit/
+
+# os
+.DS_Store
