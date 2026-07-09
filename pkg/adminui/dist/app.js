@@ -4,7 +4,9 @@
 const State = {
   token: localStorage.getItem("gf_admin_token") || "",
   email: localStorage.getItem("gf_admin_email") || "",
+  userId: localStorage.getItem("gf_admin_uid") || "",
   collections: [],
+  info: null,
   route: "dashboard",
   param: "",
 };
@@ -85,15 +87,33 @@ async function login(email, password) {
   const res = await api("POST", "/collections/_superusers/auth-with-password", { identity: email, password });
   State.token = res.token;
   State.email = res.record.email;
+  State.userId = res.record.id;
   localStorage.setItem("gf_admin_token", State.token);
   localStorage.setItem("gf_admin_email", State.email);
+  localStorage.setItem("gf_admin_uid", State.userId);
 }
 function logout() {
-  State.token = ""; State.email = "";
+  State.token = ""; State.email = ""; State.userId = "";
   localStorage.removeItem("gf_admin_token");
   localStorage.removeItem("gf_admin_email");
+  localStorage.removeItem("gf_admin_uid");
   location.hash = "";
   render();
+}
+
+// Change the signed-in superuser's password.
+function changePassword() {
+  const pw = h("input", { class: "input", type: "password", placeholder: "min 10 chars" });
+  const pw2 = h("input", { class: "input", type: "password", placeholder: "confirm" });
+  const body = h("div", {},
+    h("div", { class: "field" }, h("label", {}, "New password"), pw),
+    h("div", { class: "field" }, h("label", {}, "Confirm password"), pw2));
+  modal("Change password", body, async (close) => {
+    if (pw.value !== pw2.value) throw new Error("Passwords do not match.");
+    await api("PATCH", "/collections/_superusers/records/" + State.userId,
+      { password: pw.value, passwordConfirm: pw2.value });
+    toast("Password changed", "ok"); close();
+  });
 }
 
 // ---- theme ----
@@ -113,8 +133,12 @@ async function render() {
   const app = document.getElementById("app");
   if (!State.token) { app.replaceChildren(loginView()); return; }
   try {
-    const res = await api("GET", "/collections");
-    State.collections = res.items || [];
+    const [cols, info] = await Promise.all([
+      api("GET", "/collections"),
+      api("GET", "/settings/info").catch(() => null),
+    ]);
+    State.collections = cols.items || [];
+    State.info = info;
   } catch (e) {
     if (e.status === 401) { logout(); return; }
     toast(e.message, "err");
@@ -173,12 +197,15 @@ function shellView() {
   nav.push(h("div", { class: "nav-head" }, "Manage"));
   nav.push(navBtn("settings", "⚙ Settings"));
   nav.push(navBtn("apikeys", "🔑 API Keys & MCP"));
+  nav.push(navBtn("collection/_superusers", "★ Superusers"));
+  if (hasModule("backups")) nav.push(navBtn("backups", "🗄 Backups"));
   nav.push(navBtn("logs", "≣ Logs"));
 
   nav.push(h("div", { style: "flex:1" }));
   nav.push(h("div", { class: "spread", style: "padding:8px 10px" },
     h("span", { class: "muted", style: "font-size:12.5px;overflow:hidden;text-overflow:ellipsis" }, State.email),
     h("button", { class: "btn ghost sm", title: "Toggle theme", onclick: () => { toggleTheme(); } }, "◑")));
+  nav.push(h("button", { class: "nav-item", onclick: changePassword }, h("span", {}, "🔑"), "Change password"));
   nav.push(h("button", { class: "nav-item", onclick: logout }, h("span", {}, "⇦"), "Sign out"));
 
   return h("div", { id: "shell" },
@@ -189,6 +216,7 @@ function navBtn(route, label) {
   return h("button", { class: "nav-item", "data-route": route, onclick: () => go(route) }, label);
 }
 function go(route) { location.hash = "#/" + route; }
+function hasModule(id) { return !!(State.info && (State.info.modules || []).includes(id)); }
 
 function renderRoute() {
   const hash = location.hash.replace(/^#\/?/, "") || "dashboard";
@@ -199,7 +227,7 @@ function renderRoute() {
   const main = document.getElementById("main");
   if (!main) return;
   main.replaceChildren(h("div", { class: "muted" }, h("span", { class: "spin" }), " Loading…"));
-  const view = { dashboard: viewDashboard, collection: viewCollection, settings: viewSettings, apikeys: viewApiKeys, logs: viewLogs }[route];
+  const view = { dashboard: viewDashboard, collection: viewCollection, settings: viewSettings, apikeys: viewApiKeys, logs: viewLogs, backups: viewBackups }[route];
   (view || viewDashboard)(main).catch((e) => {
     main.replaceChildren(h("div", { class: "empty" }, e.message));
     if (e.status === 401) logout();
@@ -242,106 +270,314 @@ function table(cols, rows, onRow) {
 }
 
 // ---- Collection records ----
+const listState = {}; // per-collection UI state (page/sort/search/perPage)
+function lsFor(name) {
+  if (!listState[name]) listState[name] = { page: 1, perPage: 50, sort: "-created", search: "" };
+  return listState[name];
+}
+// pick a human-friendly label field for relation display
+function displayField(col) {
+  if (!col) return "id";
+  for (const p of ["name", "title", "label", "email", "slug", "username"]) {
+    if (col.fields.some((f) => f.name === p)) return p;
+  }
+  const t = col.fields.find((f) => !f.hidden && (f.type === "text" || f.type === "email"));
+  return t ? t.name : "id";
+}
+function searchableFields(col) {
+  return col.fields.filter((f) => !f.hidden && ["text", "email", "url", "editor"].includes(f.type)).map((f) => f.name);
+}
+function downloadFile(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = h("a", { href: url, download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 async function viewCollection(main) {
   const name = State.param;
   const col = State.collections.find((c) => c.name === name);
   if (!col) { main.replaceChildren(h("div", { class: "empty" }, "Collection not found.")); return; }
   const isView = col.type === "view";
+  const st = lsFor(name);
+  let selected = new Set();
+  const dataFields = col.fields.filter((f) => !f.hidden && f.type !== "autodate" && f.type !== "password");
 
-  const q = new URLSearchParams({ perPage: "50", sort: "-created" });
-  const res = await api("GET", `/collections/${name}/records?` + q);
-  const items = res.items || [];
+  const countEl = h("div", { class: "muted", style: "font-size:13px" });
+  const tableHost = h("div", { class: "table-wrap" });
+  const pager = h("div", { class: "pager" });
+  const bulkBar = h("div", { class: "row", style: "display:none;gap:8px;margin-bottom:10px" },
+    h("span", { class: "muted", id: "bulk-count" }),
+    h("button", { class: "btn danger sm", onclick: bulkDelete }, "Delete selected"));
 
-  const visibleFields = col.fields.filter((f) => !f.hidden).slice(0, 6);
-  const cols = [{ key: "id", label: "id", render: (r) => h("code", {}, r.id.slice(0, 8)) }];
-  for (const f of visibleFields) cols.push({ key: f.name, label: f.name, render: (r) => cellPreview(r[f.name]) });
-  cols.push({ key: "_a", label: "", align: "right", render: (r) => rowActions(col, r) });
+  const searchI = h("input", { class: "input sm", type: "search", placeholder: "Search…", value: st.search, style: "max-width:240px" });
+  let searchTimer;
+  searchI.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { st.search = searchI.value; st.page = 1; refresh(); }, 250);
+  });
+  const perPageSel = h("select", { class: "input sm", style: "width:auto" },
+    ...[10, 25, 50, 100, 200].map((n) => { const o = h("option", { value: n }, n + " / page"); if (n === st.perPage) o.selected = true; return o; }));
+  perPageSel.addEventListener("change", () => { st.perPage = Number(perPageSel.value); st.page = 1; refresh(); });
 
   const toolbar = h("div", { class: "toolbar" },
-    h("div", {}, h("h1", { class: "page-title" }, name),
-      h("div", { class: "muted", style: "font-size:13px" }, `${res.totalItems} records · ${col.type}`)),
-    h("div", { class: "row" },
+    h("div", {}, h("h1", { class: "page-title" }, name), countEl),
+    h("div", { class: "row wrap" },
+      searchableFields(col).length ? searchI : null, perPageSel,
+      h("button", { class: "btn outline sm", onclick: exportJSON }, "⭳ Export"),
       !col.system && !isView && h("button", { class: "btn outline sm", onclick: () => editSchema(col) }, "⚙ Schema"),
-      !isView && h("button", { class: "btn sm", onclick: () => editRecord(col, null) }, "＋ New record")));
+      !col.system && !isView && h("button", { class: "btn outline sm", onclick: truncate }, "Clear"),
+      !isView && h("button", { class: "btn sm", onclick: () => editRecord(col, refresh, null) }, "＋ New record")));
 
-  main.replaceChildren(toolbar, h("div", { class: "table-wrap" }, table(cols, items, (r) => editRecord(col, r))));
+  main.replaceChildren(toolbar, bulkBar, tableHost, pager);
+  await refresh();
+
+  function buildFilter() {
+    if (!st.search.trim()) return "";
+    const fields = searchableFields(col);
+    if (!fields.length) return "";
+    const needle = st.search.trim().replace(/"/g, '\\"');
+    return fields.map((f) => `${f} ~ "${needle}"`).join(" || ");
+  }
+
+  async function refresh() {
+    selected = new Set(); updateBulk();
+    tableHost.replaceChildren(h("div", { class: "muted", style: "padding:16px" }, h("span", { class: "spin" }), " Loading…"));
+    let res;
+    try {
+      const q = new URLSearchParams({ page: String(st.page), perPage: String(st.perPage), sort: st.sort });
+      const filter = buildFilter();
+      if (filter) q.set("filter", filter);
+      res = await api("GET", `/collections/${name}/records?` + q);
+    } catch (e) { toast(e.message, "err"); res = { items: [], totalItems: 0, totalPages: 1 }; }
+    const items = res.items || [];
+    countEl.textContent = `${res.totalItems} records · ${col.type}`;
+
+    const selAll = h("input", { type: "checkbox", title: "Select all" });
+    selAll.addEventListener("change", () => {
+      tableHost.querySelectorAll("tbody input.rowsel").forEach((cb) => {
+        cb.checked = selAll.checked;
+        const id = cb.getAttribute("data-id");
+        if (selAll.checked) selected.add(id); else selected.delete(id);
+      });
+      updateBulk();
+    });
+
+    const head = h("tr", {},
+      !isView && h("th", { style: "width:32px" }, selAll),
+      sortHeader("id", "id"),
+      ...dataFields.map((f) => sortHeader(f.name, f.name)),
+      h("th", {}));
+    const body = h("tbody", {});
+    if (!items.length) body.append(h("tr", {}, h("td", { colspan: dataFields.length + 3, class: "empty" }, "No records.")));
+    for (const r of items) body.append(recordRow(r));
+    tableHost.replaceChildren(h("table", {}, h("thead", {}, head), body));
+    renderPager(res);
+  }
+
+  function sortHeader(fname, label) {
+    const active = st.sort === fname || st.sort === "-" + fname;
+    const desc = st.sort === "-" + fname;
+    return h("th", { class: "sortable" + (active ? " active" : ""), onclick: () => { st.sort = st.sort === fname ? "-" + fname : fname; refresh(); } },
+      label, active ? h("span", { class: "sort-arrow" }, desc ? " ↓" : " ↑") : "");
+  }
+
+  function recordRow(r) {
+    const tr = h("tr", {});
+    if (!isView) {
+      const cb = h("input", { type: "checkbox", class: "rowsel", "data-id": r.id });
+      cb.addEventListener("click", (e) => e.stopPropagation());
+      cb.addEventListener("change", () => { if (cb.checked) selected.add(r.id); else selected.delete(r.id); updateBulk(); });
+      tr.append(h("td", {}, cb));
+    }
+    tr.append(h("td", {}, h("code", {}, String(r.id).slice(0, 10))));
+    for (const f of dataFields) tr.append(h("td", {}, cellPreview(r[f.name], f)));
+    tr.append(h("td", { style: "text-align:right" }, rowActions(col, r, refresh)));
+    tr.style.cursor = "pointer";
+    tr.addEventListener("click", () => editRecord(col, refresh, r));
+    return tr;
+  }
+
+  function updateBulk() {
+    bulkBar.style.display = selected.size ? "flex" : "none";
+    const c = document.getElementById("bulk-count");
+    if (c) c.textContent = `${selected.size} selected`;
+  }
+  function bulkDelete() {
+    confirmModal("Delete records", `Delete ${selected.size} record(s)? This cannot be undone.`, async () => {
+      for (const id of selected) await api("DELETE", `/collections/${name}/records/${id}`);
+      toast("Deleted", "ok"); refresh();
+    });
+  }
+  function truncate() {
+    confirmModal("Clear all records", `Delete ALL records in "${name}"? This cannot be undone.`, async () => {
+      await api("DELETE", "/collections/" + name + "/truncate");
+      toast("Collection cleared", "ok"); st.page = 1; refresh();
+    });
+  }
+  async function exportJSON() {
+    const all = [];
+    let page = 1;
+    for (;;) {
+      const q = new URLSearchParams({ page: String(page), perPage: "500", sort: st.sort });
+      const r = await api("GET", `/collections/${name}/records?` + q);
+      all.push(...(r.items || []));
+      if (page >= (r.totalPages || 1)) break;
+      page++;
+    }
+    downloadFile(name + ".json", JSON.stringify(all, null, 2), "application/json");
+    toast(`Exported ${all.length} records`, "ok");
+  }
+  function renderPager(res) {
+    const total = res.totalPages || 1;
+    pager.replaceChildren(
+      h("button", { class: "btn outline sm", disabled: st.page <= 1, onclick: () => { st.page--; refresh(); } }, "‹ Prev"),
+      h("span", { class: "muted", style: "font-size:13px" }, `Page ${st.page} of ${total}`),
+      h("button", { class: "btn outline sm", disabled: st.page >= total, onclick: () => { st.page++; refresh(); } }, "Next ›"));
+  }
 }
 
-function cellPreview(v) {
-  if (v == null) return h("span", { class: "muted" }, "—");
+function cellPreview(v, f) {
+  if (v == null || v === "") return h("span", { class: "muted" }, "—");
   if (typeof v === "boolean") return h("span", { class: "badge " + (v ? "green" : "") }, v ? "true" : "false");
-  if (Array.isArray(v)) return v.length ? v.join(", ").slice(0, 40) : h("span", { class: "muted" }, "[]");
+  if (f && f.type === "file") { const arr = Array.isArray(v) ? v : [v]; return h("span", { class: "badge" }, arr.length + (arr.length === 1 ? " file" : " files")); }
+  if (Array.isArray(v)) return v.length ? h("span", {}, v.join(", ").slice(0, 40)) : h("span", { class: "muted" }, "[]");
   if (typeof v === "object") return h("code", {}, JSON.stringify(v).slice(0, 40));
   const s = String(v);
   return s.length > 48 ? s.slice(0, 48) + "…" : s;
 }
 
-function rowActions(col, r) {
-  return h("div", { class: "row", style: "justify-content:flex-end" },
-    h("button", {
-      class: "btn ghost sm", onclick: (e) => {
-        e.stopPropagation();
-        confirmModal("Delete record", `Delete record ${r.id}? This cannot be undone.`, async () => {
-          await api("DELETE", `/collections/${col.name}/records/${r.id}`);
-          toast("Record deleted", "ok"); renderRoute();
-        });
-      }
-    }, "🗑"));
+function rowActions(col, r, refresh) {
+  return h("button", {
+    class: "btn ghost sm", title: "Delete", onclick: (e) => {
+      e.stopPropagation();
+      confirmModal("Delete record", `Delete record ${r.id}? This cannot be undone.`, async () => {
+        await api("DELETE", `/collections/${col.name}/records/${r.id}`);
+        toast("Record deleted", "ok"); refresh ? refresh() : renderRoute();
+      });
+    }
+  }, "🗑");
 }
 
-function editRecord(col, record) {
+function editRecord(col, done, record) {
   const isNew = !record;
   const body = h("div", {});
   const inputs = {};
+  let hasFile = false;
   for (const f of col.fields) {
     if (f.hidden && f.type !== "password") continue;
     if (f.type === "autodate") continue;
+    if (f.type === "file") hasFile = true;
     const val = record ? record[f.name] : undefined;
-    const { field, get } = fieldInput(f, val, isNew);
+    const { field, get } = fieldInput(f, val, isNew, col, record);
     inputs[f.name] = get;
     body.append(field);
   }
-  if (col.type === "auth" && isNew) {
-    const pw = h("input", { class: "input", type: "password", placeholder: "min 10 chars" });
+  if (col.type === "auth") {
+    const pw = h("input", { class: "input", type: "password", placeholder: isNew ? "min 10 chars" : "leave blank to keep" });
     const pw2 = h("input", { class: "input", type: "password" });
-    inputs["password"] = () => pw.value;
-    inputs["passwordConfirm"] = () => pw2.value;
-    body.append(h("div", { class: "field" }, h("label", {}, "Password"), pw),
+    inputs["password"] = () => pw.value || undefined;
+    inputs["passwordConfirm"] = () => (pw.value ? pw2.value : undefined);
+    body.append(h("div", { class: "field" }, h("label", {}, "Password" + (isNew ? " *" : "")), pw),
       h("div", { class: "field" }, h("label", {}, "Confirm password"), pw2));
   }
 
   modal(isNew ? `New ${col.name} record` : `Edit ${col.name} record`, body, async (close) => {
-    const data = {};
+    const scalar = {};
+    let fileData = null;
     for (const [k, get] of Object.entries(inputs)) {
       const v = get();
-      if (v !== undefined) data[k] = v;
+      if (v === undefined) continue;
+      if (v && v.__file) {
+        if (v.files.length || v.remove.length) { (fileData = fileData || {})[k] = v; }
+      } else {
+        scalar[k] = v;
+      }
     }
-    if (isNew) await api("POST", `/collections/${col.name}/records`, data);
-    else await api("PATCH", `/collections/${col.name}/records/${record.id}`, data);
+    if (fileData) {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(scalar)) fd.append(k, typeof v === "object" ? JSON.stringify(v) : String(v));
+      for (const [k, v] of Object.entries(fileData)) {
+        for (const file of v.files) fd.append(k, file);
+        for (const rm of v.remove) fd.append(k, "-" + rm);
+      }
+      if (isNew) await api("POST", `/collections/${col.name}/records`, fd, true);
+      else await api("PATCH", `/collections/${col.name}/records/${record.id}`, fd, true);
+    } else {
+      if (isNew) await api("POST", `/collections/${col.name}/records`, scalar);
+      else await api("PATCH", `/collections/${col.name}/records/${record.id}`, scalar);
+    }
     toast(isNew ? "Record created" : "Record updated", "ok");
-    close(); renderRoute();
+    close(); done ? done() : renderRoute();
   });
 }
 
-function fieldInput(f, val, isNew) {
+function fieldInput(f, val, isNew, col, record) {
   const wrap = h("div", { class: "field" });
   wrap.append(h("label", {}, f.name + (f.required ? " *" : "")));
   let get = () => undefined;
+  const opts = f.options || {};
   if (f.type === "bool") {
     const cb = h("input", { type: "checkbox" });
     cb.checked = !!val;
     wrap.append(h("div", { class: "row" }, cb, h("span", { class: "muted" }, "enabled")));
     get = () => cb.checked;
-  } else if (f.type === "select" && f.options && f.options.values) {
-    const multi = (f.options.maxSelect || 1) > 1;
-    const sel = h("select", { class: "input", multiple: multi });
-    for (const opt of f.options.values) {
+  } else if (f.type === "select" && opts.values) {
+    const multi = (opts.maxSelect || 1) !== 1;
+    const sel = h("select", { class: "input", multiple: multi, size: multi ? Math.min(opts.values.length, 5) : 1 });
+    if (!multi && !f.required) sel.append(h("option", { value: "" }, "— none —"));
+    for (const opt of opts.values) {
       const o = h("option", { value: opt }, opt);
       if (multi ? (val || []).includes(opt) : val === opt) o.selected = true;
       sel.append(o);
     }
     wrap.append(sel);
-    get = () => multi ? Array.from(sel.selectedOptions).map((o) => o.value) : sel.value;
+    get = () => multi ? Array.from(sel.selectedOptions).map((o) => o.value) : (sel.value || (f.required ? "" : undefined));
+  } else if (f.type === "relation") {
+    const target = opts.collection;
+    const multi = (opts.maxSelect || 1) !== 1;
+    const current = val == null ? [] : (Array.isArray(val) ? val : [val]);
+    const sel = h("select", { class: "input", multiple: multi, size: multi ? 5 : 1 },
+      h("option", { value: "" }, "Loading…"));
+    (async () => {
+      try {
+        const tcol = State.collections.find((c) => c.name === target);
+        const label = displayField(tcol);
+        const r = await api("GET", `/collections/${target}/records?perPage=200&sort=${encodeURIComponent(label)}`);
+        sel.replaceChildren();
+        if (!multi && !f.required) sel.append(h("option", { value: "" }, "— none —"));
+        for (const rec of (r.items || [])) {
+          const o = h("option", { value: rec.id }, String(rec[label] ?? rec.id).slice(0, 70));
+          if (current.includes(rec.id)) o.selected = true;
+          sel.append(o);
+        }
+      } catch { sel.replaceChildren(h("option", { value: "" }, "(couldn't load " + target + ")")); }
+    })();
+    wrap.append(sel);
+    if (target) wrap.append(h("span", { class: "muted", style: "font-size:12px" }, "→ " + target));
+    get = () => {
+      const vals = Array.from(sel.selectedOptions).map((o) => o.value).filter(Boolean);
+      return multi ? vals : (vals[0] ?? (f.required ? "" : undefined));
+    };
+  } else if (f.type === "file") {
+    const multi = (opts.maxSelect || 1) !== 1;
+    const existing = val == null ? [] : (Array.isArray(val) ? val : [val]);
+    const kept = new Set(existing);
+    const list = h("div", { class: "stack", style: "gap:4px;margin-bottom:6px" });
+    existing.forEach((fn) => {
+      const link = record ? h("a", { href: `/api/files/${col.name}/${record.id}/${encodeURIComponent(fn)}`, target: "_blank" }, fn) : h("span", {}, fn);
+      const rowEl = h("div", { class: "spread" }, link,
+        h("button", { class: "btn ghost sm", type: "button", onclick: () => { kept.delete(fn); rowEl.remove(); } }, "✕"));
+      list.append(rowEl);
+    });
+    const fileI = h("input", { type: "file", multiple: multi });
+    wrap.append(list, fileI);
+    get = () => ({ __file: true, files: Array.from(fileI.files || []), remove: existing.filter((fn) => !kept.has(fn)) });
+  } else if (f.type === "date") {
+    const inp = h("input", { class: "input", type: "datetime-local" });
+    if (val) inp.value = String(val).slice(0, 16).replace(" ", "T");
+    wrap.append(inp);
+    get = () => { if (!inp.value) return f.required ? "" : undefined; return inp.value.replace("T", " ") + ":00"; };
   } else if (f.type === "editor" || f.type === "json") {
     const ta = h("textarea", { class: "input" }, f.type === "json" && val != null ? JSON.stringify(val, null, 2) : (val ?? ""));
     wrap.append(ta);
@@ -351,7 +587,7 @@ function fieldInput(f, val, isNew) {
       return ta.value;
     };
   } else {
-    const type = f.type === "number" ? "number" : f.type === "date" ? "text" : "text";
+    const type = f.type === "number" ? "number" : f.type === "email" ? "email" : f.type === "url" ? "url" : "text";
     const inp = h("input", { class: "input", type, value: val ?? "", placeholder: f.type });
     wrap.append(inp);
     get = () => {
@@ -363,15 +599,62 @@ function fieldInput(f, val, isNew) {
 }
 
 // ---- Schema editor ----
+const FIELD_TYPES = ["text", "editor", "number", "bool", "email", "url", "date", "select", "json", "relation", "file", "password"];
+function cbx(v) { const c = h("input", { type: "checkbox" }); c.checked = !!v; return c; }
+
+// renderOptPanel fills a panel with type-specific field options and returns a
+// getter producing the options object.
+function renderOptPanel(panel, type, opts) {
+  panel.replaceChildren();
+  const inputs = {};
+  function add(key, label, kind, ph) {
+    const inp = h("input", { class: "input sm", type: kind === "num" ? "number" : "text", value: opts[key] ?? "", placeholder: ph || "" });
+    panel.append(h("div", { class: "field", style: "margin:0 0 6px" }, h("label", { style: "font-size:12px" }, label), inp));
+    inputs[key] = () => { const v = String(inp.value).trim(); if (v === "") return undefined; return kind === "num" ? Number(v) : v; };
+  }
+  if (type === "select") {
+    const ta = h("textarea", { class: "input sm", style: "min-height:60px" }, (opts.values || []).join("\n"));
+    panel.append(h("div", { class: "field", style: "margin:0 0 6px" }, h("label", { style: "font-size:12px" }, "Values (one per line)"), ta));
+    inputs.values = () => ta.value.split("\n").map((s) => s.trim()).filter(Boolean);
+    add("maxSelect", "Max select (1 = single)", "num", "1");
+  } else if (type === "relation") {
+    const sel = h("select", { class: "input sm" }, h("option", { value: "" }, "— collection —"));
+    for (const c of State.collections) { const o = h("option", { value: c.name }, c.name); if (c.name === opts.collection) o.selected = true; sel.append(o); }
+    panel.append(h("div", { class: "field", style: "margin:0 0 6px" }, h("label", { style: "font-size:12px" }, "Related collection"), sel));
+    inputs.collection = () => sel.value || undefined;
+    add("maxSelect", "Max select (1 = single)", "num", "1");
+  } else if (type === "number") {
+    add("min", "Min", "num"); add("max", "Max", "num");
+  } else if (type === "text" || type === "editor") {
+    add("min", "Min length", "num"); add("max", "Max length", "num"); add("pattern", "Regex pattern", "str");
+  } else if (type === "file") {
+    add("maxSelect", "Max files (1 = single)", "num", "1");
+    add("maxSize", "Max size (bytes)", "num");
+    add("mimeTypes", "Mime types (comma-separated)", "str", "image/png, image/jpeg");
+  } else {
+    panel.append(h("div", { class: "muted", style: "font-size:12px" }, "No extra options for this type."));
+  }
+  return () => {
+    const out = {};
+    for (const [k, g] of Object.entries(inputs)) { const v = g(); if (v !== undefined && !(Array.isArray(v) && !v.length)) out[k] = v; }
+    if (typeof out.mimeTypes === "string") out.mimeTypes = out.mimeTypes.split(",").map((s) => s.trim()).filter(Boolean);
+    return out;
+  };
+}
+
 function newCollection() {
   const nameI = h("input", { class: "input", placeholder: "e.g. posts" });
   const typeI = h("select", { class: "input" }, h("option", { value: "base" }, "base"), h("option", { value: "auth" }, "auth"), h("option", { value: "view" }, "view"));
+  const queryWrap = h("div", { class: "field hidden" }, h("label", {}, "View query (read-only SELECT)"),
+    h("textarea", { class: "input", placeholder: "SELECT id, ... FROM ..." }));
+  typeI.addEventListener("change", () => queryWrap.classList.toggle("hidden", typeI.value !== "view"));
   const body = h("div", {},
     h("div", { class: "field" }, h("label", {}, "Name"), nameI),
-    h("div", { class: "field" }, h("label", {}, "Type"), typeI));
+    h("div", { class: "field" }, h("label", {}, "Type"), typeI), queryWrap);
   modal("New collection", body, async (close) => {
-    const payload = { name: nameI.value.trim(), type: typeI.value, listRule: "", viewRule: "", fields: [] };
-    if (typeI.value === "view") payload.options = { query: "SELECT id FROM ..." };
+    const type = typeI.value;
+    const payload = { name: nameI.value.trim(), type, listRule: "", viewRule: "", fields: [] };
+    if (type === "view") payload.options = { query: queryWrap.querySelector("textarea").value.trim() };
     await api("POST", "/collections", payload);
     toast("Collection created", "ok"); close();
     await render(); go("collection/" + payload.name);
@@ -380,33 +663,55 @@ function newCollection() {
 
 function editSchema(col) {
   const fieldRows = h("div", {});
+  const idxRows = h("div", {});
   const rules = {};
-  function addFieldRow(f = { name: "", type: "text", required: false, unique: false }) {
-    const nameI = h("input", { class: "input sm", value: f.name, placeholder: "field name" });
-    const typeI = h("select", { class: "input sm" });
-    for (const t of ["text", "editor", "number", "bool", "email", "url", "date", "select", "json", "relation", "file", "password"]) {
-      const o = h("option", { value: t }, t); if (t === f.type) o.selected = true; typeI.append(o);
-    }
-    const reqI = h("input", { type: "checkbox" }); reqI.checked = !!f.required;
-    const uniI = h("input", { type: "checkbox" }); uniI.checked = !!f.unique;
-    const opts = f.options || {};
-    const row = h("div", { class: "field-row" }, nameI, typeI,
+
+  function addFieldRow(f = { name: "", type: "text", required: false, unique: false, hidden: false, options: {} }) {
+    const opts = Object.assign({}, f.options || {});
+    const locked = !!f.system;
+    const nameI = h("input", { class: "input sm", value: f.name, placeholder: "field name", disabled: locked });
+    const typeI = h("select", { class: "input sm", disabled: locked });
+    for (const t of FIELD_TYPES) { const o = h("option", { value: t }, t); if (t === f.type) o.selected = true; typeI.append(o); }
+    const reqI = cbx(f.required), uniI = cbx(f.unique), hidI = cbx(f.hidden);
+    const optPanel = h("div", { class: "opt-panel hidden" });
+    let getOpts = renderOptPanel(optPanel, typeI.value, opts);
+    typeI.addEventListener("change", () => { getOpts = renderOptPanel(optPanel, typeI.value, {}); });
+    const gear = h("button", { class: "btn ghost sm", type: "button", title: "Field options", onclick: () => optPanel.classList.toggle("hidden") }, "⚙");
+    const del = h("button", { class: "btn ghost sm", type: "button", title: "Remove", disabled: locked, onclick: () => row.remove() }, "✕");
+    const top = h("div", { class: "field-row" }, nameI, typeI,
       h("label", { class: "row", style: "font-size:12px" }, reqI, "req"),
       h("label", { class: "row", style: "font-size:12px" }, uniI, "uniq"),
-      h("button", { class: "btn ghost sm", onclick: () => row.remove() }, "✕"));
+      h("label", { class: "row", style: "font-size:12px" }, hidI, "hide"),
+      gear, del);
+    const row = h("div", { class: "schema-field" }, top, optPanel);
     row._get = () => {
       if (!nameI.value.trim()) return null;
-      const out = { name: nameI.value.trim(), type: typeI.value, required: reqI.checked, unique: uniI.checked };
+      const out = { name: nameI.value.trim(), type: typeI.value, required: reqI.checked, unique: uniI.checked, hidden: hidI.checked };
       if (f.id) out.id = f.id;
-      if (f.system) { out.system = true; }
-      if (typeI.value === "select") out.options = { values: (opts.values || ["a", "b"]), maxSelect: opts.maxSelect || 1 };
-      if (typeI.value === "relation") out.options = { collection: opts.collection || "", maxSelect: opts.maxSelect || 1 };
-      if (typeI.value === "file") out.options = { maxSelect: opts.maxSelect || 1 };
+      if (f.system) out.system = true;
+      const o = getOpts();
+      if (Object.keys(o).length) out.options = o;
       return out;
     };
     fieldRows.append(row);
   }
   for (const f of col.fields) addFieldRow(f);
+
+  function addIdxRow(ix = { name: "", columns: [], unique: false }) {
+    const nameI = h("input", { class: "input sm", value: ix.name, placeholder: "index name" });
+    const colsI = h("input", { class: "input sm", value: (ix.columns || []).join(", "), placeholder: "col1, col2" });
+    const uniI = cbx(ix.unique);
+    const row = h("div", { class: "idx-row" }, nameI, colsI,
+      h("label", { class: "row", style: "font-size:12px" }, uniI, "uniq"),
+      h("button", { class: "btn ghost sm", type: "button", onclick: () => row.remove() }, "✕"));
+    row._get = () => {
+      const cols = colsI.value.split(",").map((s) => s.trim()).filter(Boolean);
+      if (!nameI.value.trim() || !cols.length) return null;
+      return { name: nameI.value.trim(), columns: cols, unique: uniI.checked };
+    };
+    idxRows.append(row);
+  }
+  (col.indexes || []).forEach(addIdxRow);
 
   function ruleField(label, key) {
     const cur = col[key];
@@ -423,6 +728,9 @@ function editSchema(col) {
     h("h4", { style: "margin:0 0 8px" }, "Fields"),
     fieldRows,
     h("button", { class: "btn outline sm", onclick: () => addFieldRow(), style: "margin:4px 0 16px" }, "＋ Add field"),
+    h("h4", { style: "margin:8px 0" }, "Indexes"),
+    idxRows,
+    h("button", { class: "btn outline sm", onclick: () => addIdxRow(), style: "margin:4px 0 16px" }, "＋ Add index"),
     h("h4", { style: "margin:8px 0" }, "API rules"),
     h("p", { class: "muted", style: "font-size:12.5px;margin-top:0" }, "Expression like ", h("code", {}, "owner = @request.auth.id"), ". Empty = public, locked = superusers only."),
     ruleField("List", "listRule"), ruleField("View", "viewRule"),
@@ -430,7 +738,8 @@ function editSchema(col) {
 
   const m = modal(`Schema · ${col.name}`, body, async (close) => {
     const fields = Array.from(fieldRows.children).map((r) => r._get()).filter(Boolean);
-    const payload = { fields };
+    const indexes = Array.from(idxRows.children).map((r) => r._get()).filter(Boolean);
+    const payload = { fields, indexes };
     for (const [k, get] of Object.entries(rules)) payload[k] = get();
     await api("PATCH", "/collections/" + col.name, payload);
     toast("Schema saved", "ok"); close(); await render(); go("collection/" + col.name);
@@ -585,6 +894,54 @@ async function viewLogs(main) {
     h("div", { class: "table-wrap" }, table(
       [{ key: "when", label: "Time" }, { key: "method", label: "Method" }, { key: "path", label: "Path" },
       { key: "status", label: "Status" }, { key: "ms", label: "Duration", align: "right" }, { key: "ip", label: "IP" }], rows)));
+}
+
+// ---- Backups ----
+function fmtBytes(n) {
+  n = Number(n) || 0;
+  const u = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i === 0 ? n : n.toFixed(1)) + " " + u[i];
+}
+async function downloadBackup(name) {
+  try {
+    const res = await fetch("/api/backups/" + encodeURIComponent(name), { headers: { Authorization: "Bearer " + State.token } });
+    if (!res.ok) throw new Error("Download failed");
+    const url = URL.createObjectURL(await res.blob());
+    const a = h("a", { href: url, download: name }); document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) { toast(e.message, "err"); }
+}
+async function viewBackups(main) {
+  async function load() {
+    const res = await api("GET", "/backups").catch(() => ({ items: [] }));
+    const rows = (res.items || []).map((b) => ({
+      name: h("code", {}, b.name),
+      size: fmtBytes(b.size),
+      created: b.created ? String(b.created).replace("T", " ").slice(0, 19) : "",
+      _a: h("div", { class: "row", style: "justify-content:flex-end" },
+        h("button", { class: "btn outline sm", onclick: () => downloadBackup(b.name) }, "⭳ Download"),
+        h("button", {
+          class: "btn ghost sm", onclick: () => confirmModal("Delete backup", `Delete ${b.name}?`, async () => {
+            await api("DELETE", "/backups/" + encodeURIComponent(b.name)); toast("Backup deleted", "ok"); load();
+          })
+        }, "🗑")),
+    }));
+    main.replaceChildren(
+      h("div", { class: "toolbar" }, h("h1", { class: "page-title" }, "Backups"),
+        h("button", { class: "btn sm", onclick: create }, "＋ Create backup")),
+      h("p", { class: "muted", style: "margin-top:0" }, "Snapshots of the database and uploaded files (.tar.gz)."),
+      h("div", { class: "table-wrap" }, table(
+        [{ key: "name", label: "Name" }, { key: "size", label: "Size", align: "right" },
+        { key: "created", label: "Created" }, { key: "_a", label: "", align: "right" }], rows)));
+  }
+  async function create() {
+    toast("Creating backup…");
+    try { const r = await api("POST", "/backups"); toast("Backup created: " + r.name, "ok"); load(); }
+    catch (e) { toast(e.message, "err"); }
+  }
+  await load();
 }
 
 // ---- boot ----

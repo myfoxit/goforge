@@ -87,7 +87,7 @@ DELETE /api/collections/posts/records/{id}
 | `saml` | SAML 2.0 service provider (Okta, Entra, Keycloak) | `auth` |
 | `mail` | SMTP, sendmail, Resend, SES — switchable at runtime | — |
 | `mcp` | Every collection as AI tools + scoped API keys | — |
-| `adminui` | Embedded PocketBase-style admin at `/_/` | — |
+| `adminui` | Embedded PocketBase-style admin at `/_/` — record search/sort/paginate, bulk actions, export, relation/file/date widgets, schema + index editor, backups, superusers | — |
 | `orgs` | Multi-tenancy: organizations, members, email invites | `auth`, `mail` |
 | `webhooks` | Signed outgoing webhooks on record events | — |
 | `jobs` | In-process cron scheduler | — |

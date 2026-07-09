@@ -277,7 +277,7 @@ func frameworkVersion() string {
 	if Version != "" && Version != "0.1.0-dev" {
 		return "v" + strings.TrimPrefix(Version, "v")
 	}
-	return "v0.2.0"
+	return "v0.3.0"
 }
 
 func step(msg string) {

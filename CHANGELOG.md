@@ -7,6 +7,19 @@ All notable changes to GoForge are documented here. The format follows
 
 ### Added
 
+- **Admin dashboard, PocketBase-level** — the embedded admin at `/_/` gained:
+  - Record lists with debounced **search**, click-to-**sort** column headers,
+    **pagination** + page-size selector, showing all non-hidden fields,
+    **bulk-select + bulk delete**, **export to JSON**, and **clear/truncate**.
+  - Richer record editor widgets: a **relation picker** (loads related records,
+    single/multi), **file upload** (existing files shown/downloadable/removable,
+    new uploads via multipart), and a **date/time picker**.
+  - A fuller schema editor: per-field **type-specific options** (select values,
+    relation target + maxSelect, number min/max, text min/max/pattern, file
+    maxSelect/maxSize/mime), a **hidden** flag, and a **composite-index editor**.
+  - New screens: **Backups** (create/list/download/delete, when the module is
+    enabled), a **Superusers** shortcut, a view-query field on collection
+    creation, and a **change-password** action for the signed-in superuser.
 - **Scaffold templates** — `forge init` now offers three flavors via a template
   picker (or `--template minimal|demo|saas`):
   - **minimal** — API + admin only, no frontend.
