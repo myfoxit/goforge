@@ -1,0 +1,17 @@
+package main
+
+import (
+	forge "github.com/myfoxit/goforge"
+	_ "github.com/myfoxit/goforge/pkg/db/drivers/{{.DB}}"
+
+	_ "{{.Module}}/migrations"
+)
+
+func main() {
+	app := forge.New()
+	app.Use(forgeModules()...)
+{{- if .UI}}
+	mountUI(app)
+{{- end}}
+	forge.Run(app)
+}

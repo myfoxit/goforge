@@ -1,0 +1,11 @@
+/forge_data/
+/dist/
+*.db
+*.db-wal
+*.db-shm
+node_modules/
+.svelte-kit/
+ui/build/*
+!ui/build/.gitkeep
+.env
+.DS_Store

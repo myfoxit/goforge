@@ -19,6 +19,20 @@ type Migration struct {
 	Up func(ctx context.Context, d *db.DB) error
 }
 
+// registered collects app migrations contributed via package-level Register
+// (typically from a blank-imported migrations package in the app).
+var registered []Migration
+
+// Register queues app-level migrations (call from init() or file scope):
+//
+//	func init() {
+//	    migrations.Register(migrations.Migration{ID: "0001_seed", Up: ...})
+//	}
+func Register(ms ...Migration) { registered = append(registered, ms...) }
+
+// Registered returns migrations added via the package-level Register.
+func Registered() []Migration { return registered }
+
 // Runner applies registered migrations exactly once each.
 type Runner struct {
 	db         *db.DB

@@ -1,0 +1,51 @@
+# {{.Name}}
+
+A [GoForge](https://github.com/myfoxit/goforge) application.
+
+## Quickstart
+
+```sh
+go run . serve                       # start the API {{if .UI}}+ embedded UIs{{end}}
+go run . superuser create you@example.com your-password
+open http://localhost:8090/_/        # admin dashboard
+```
+
+{{if .UI -}}
+## Frontend development
+
+```sh
+forge dev        # runs the Go API and the SvelteKit dev server together
+```
+
+The SvelteKit app lives in `ui/` and proxies `/api` to the Go server.
+`make build` bakes the compiled frontend into the single binary.
+{{- end}}
+
+## The 30-second tour
+
+- **Collections** (tables) are managed in the admin UI at `/_/` — every
+  collection instantly gets a REST API with rule-based permissions.
+- **MCP**: create an API key in the admin UI and connect the app to Claude
+  or any MCP client — the AI can query data *and* evolve the schema.
+- **Modules** are listed in `forge.json`; add more with `forge add`.
+- **Settings** (mail provider, OAuth, storage, updates) live in the admin UI.
+
+## Deploying
+
+```sh
+make build       # single self-contained binary in dist/
+```
+
+Ship the binary (plus nothing else) to a server. Data lives in `./forge_data`.
+For fleets of instances, publish releases with `forge release` and let
+deployed binaries self-update from the manifest.
+
+## Commands
+
+```
+app serve                     start the server
+app migrate                   apply migrations and exit
+app superuser create E P      manage superusers
+app update [--check]          self-update from the release manifest
+app backup                    snapshot data + files
+```

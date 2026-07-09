@@ -1,0 +1,24 @@
+// Package migrations holds app-specific database migrations.
+// They run automatically at startup, once each, ordered by ID.
+package migrations
+
+import (
+	"context"
+
+	"github.com/myfoxit/goforge/pkg/db"
+	"github.com/myfoxit/goforge/pkg/migrations"
+)
+
+func init() {
+	migrations.Register(
+		migrations.Migration{
+			ID: "0001_init",
+			Up: func(ctx context.Context, d *db.DB) error {
+				// Collections are usually created in the admin UI or via MCP.
+				// Use migrations for seed data and custom tables, e.g.:
+				//   _, err := d.Exec(ctx, "INSERT INTO ...")
+				return nil
+			},
+		},
+	)
+}

@@ -1,0 +1,5 @@
+# Boot-time overrides (see config.yaml for the full list)
+# FORGE_SECRET=change-me-48-random-chars
+# FORGE_DB_DSN=postgres://user:pass@localhost:5432/app
+# FORGE_HTTP_ADDR=:8090
+# FORGE_DEV=true

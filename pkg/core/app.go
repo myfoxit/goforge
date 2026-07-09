@@ -191,6 +191,9 @@ func (a *App) Bootstrap(ctx context.Context) error {
 	a.settings = newSettings(d, a.cfg.Secret)
 	a.registerCoreSettings()
 
+	// App-level migrations contributed via migrations.Register (blank import).
+	a.runner.Register(migrations.Registered()...)
+
 	// Module registration (may add migrations, settings sections, routes, hooks).
 	for _, m := range a.modules {
 		if err := m.Register(a); err != nil {

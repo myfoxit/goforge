@@ -1,0 +1,25 @@
+.PHONY: dev build run test clean
+
+# Development: API with live restart is best via `forge dev`.
+dev:
+	forge dev
+
+{{if .UI -}}
+build: ui-build
+	go build -ldflags "-X github.com/myfoxit/goforge/pkg/cmd.Version=$$(git describe --tags --always 2>/dev/null || echo dev)" -o dist/{{.Name}} .
+
+ui-build:
+	cd ui && npm install && npm run build
+{{- else -}}
+build:
+	go build -ldflags "-X github.com/myfoxit/goforge/pkg/cmd.Version=$$(git describe --tags --always 2>/dev/null || echo dev)" -o dist/{{.Name}} .
+{{- end}}
+
+run:
+	go run . serve
+
+test:
+	go test ./...
+
+clean:
+	rm -rf dist

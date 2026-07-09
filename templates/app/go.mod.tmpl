@@ -1,0 +1,10 @@
+module {{.Module}}
+
+go 1.25
+
+require github.com/myfoxit/goforge {{.GoForgeVersion}}
+{{- if .LocalFramework}}
+
+// Local framework checkout (remove once the framework is published).
+replace github.com/myfoxit/goforge => {{.LocalFramework}}
+{{- end}}

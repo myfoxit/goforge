@@ -1,0 +1,28 @@
+# {{.Name}} — GoForge boot configuration.
+# Runtime settings (mail, OAuth, storage, ...) live in the admin UI (/_/).
+# Every value here can be overridden via FORGE_* environment variables.
+
+appName: "{{.Name}}"
+appUrl: "http://localhost:8090"
+dataDir: "forge_data"
+
+http:
+  addr: ":8090"
+  # httpsDomains: ["app.example.com"]   # enables Let's Encrypt auto-TLS
+  corsOrigins: ["*"]
+  # trustProxy: true                    # behind nginx/caddy/traefik
+
+db:
+  driver: "{{.DB}}"
+{{- if eq .DB "sqlite"}}
+  # dsn: ""                             # defaults to <dataDir>/data.db
+{{- else if eq .DB "postgres"}}
+  dsn: "postgres://user:pass@localhost:5432/{{.Name}}?sslmode=disable"
+{{- else}}
+  dsn: "user:pass@tcp(localhost:3306)/{{.Name}}"
+{{- end}}
+
+log:
+  level: "info"
+  requests: true
+  retentionDays: 7
