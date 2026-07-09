@@ -146,7 +146,7 @@ func Init(args []string) error {
 	if *withUI {
 		manifest.UI.Path = "ui"
 		step("Vendoring design system components")
-		if _, err := copyComponents(abs, manifest, defaultComponents(), false); err != nil {
+		if _, err := copyComponents(abs, manifest, allComponents(), false); err != nil {
 			return err
 		}
 	}

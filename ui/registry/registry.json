@@ -1,29 +1,242 @@
 {
   "target": "src/lib/components/ui",
-  "tokensFile": "src/app.css",
+  "tokensFile": "src/lib/tokens.css",
   "components": [
-    { "name": "utils", "description": "cn() + focus-trap helpers (dependency of most components)", "files": ["utils.ts"], "default": true },
-    { "name": "button", "description": "Button with variants, sizes, loading + link mode", "files": ["Button.svelte"], "dependencies": ["utils"], "default": true },
-    { "name": "input", "description": "Text input with focus ring + invalid state", "files": ["Input.svelte"], "dependencies": ["utils"], "default": true },
-    { "name": "textarea", "description": "Multiline text input", "files": ["Textarea.svelte"], "dependencies": ["utils"] },
-    { "name": "label", "description": "Form label", "files": ["Label.svelte"], "dependencies": ["utils"], "default": true },
-    { "name": "field", "description": "Label + control + error/hint wrapper", "files": ["Field.svelte"], "dependencies": ["label"], "default": true },
-    { "name": "card", "description": "Card with header/content/footer slots", "files": ["Card.svelte"], "dependencies": ["utils"], "default": true },
-    { "name": "badge", "description": "Status badge with semantic variants", "files": ["Badge.svelte"], "dependencies": ["utils"], "default": true },
-    { "name": "checkbox", "description": "Accessible checkbox", "files": ["Checkbox.svelte"], "dependencies": ["utils"] },
-    { "name": "switch", "description": "Toggle switch", "files": ["Switch.svelte"], "dependencies": ["utils"] },
-    { "name": "select", "description": "Native select styled to the token system", "files": ["Select.svelte"], "dependencies": ["utils"], "default": true },
-    { "name": "dialog", "description": "Modal dialog with focus trap + overlay", "files": ["Dialog.svelte"], "dependencies": ["utils"], "default": true },
-    { "name": "sheet", "description": "Slide-over panel (left/right)", "files": ["Sheet.svelte"], "dependencies": ["utils"] },
-    { "name": "dropdown-menu", "description": "Dropdown menu with outside-click close", "files": ["DropdownMenu.svelte"], "dependencies": ["utils"] },
-    { "name": "table", "description": "Data table with custom cell snippet + empty state", "files": ["Table.svelte"], "dependencies": ["utils"], "default": true },
-    { "name": "tabs", "description": "Tabs with token-styled triggers", "files": ["Tabs.svelte"], "dependencies": ["utils"] },
-    { "name": "toast", "description": "Toast store + <Toaster> renderer", "files": ["toast.svelte.ts", "Toaster.svelte"], "default": true },
-    { "name": "alert", "description": "Inline alert with variants", "files": ["Alert.svelte"], "dependencies": ["utils"], "default": true },
-    { "name": "spinner", "description": "Loading spinner", "files": ["Spinner.svelte"], "dependencies": ["utils"], "default": true },
-    { "name": "separator", "description": "Horizontal/vertical divider", "files": ["Separator.svelte"], "dependencies": ["utils"] },
-    { "name": "avatar", "description": "Avatar with image + initials fallback", "files": ["Avatar.svelte"], "dependencies": ["utils"] },
-    { "name": "tooltip", "description": "Hover/focus tooltip", "files": ["Tooltip.svelte"], "dependencies": ["utils"] },
-    { "name": "theme-toggle", "description": "Light/dark theme switcher with persistence", "files": ["ThemeToggle.svelte"], "default": true }
+    {
+      "name": "utils",
+      "description": "cn() + focus-trap helpers (dependency of most components)",
+      "files": [
+        "utils.ts"
+      ],
+      "default": true
+    },
+    {
+      "name": "button",
+      "description": "Button with variants, sizes, loading + link mode",
+      "files": [
+        "Button.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ],
+      "default": true
+    },
+    {
+      "name": "input",
+      "description": "Text input with focus ring + invalid state",
+      "files": [
+        "Input.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ],
+      "default": true
+    },
+    {
+      "name": "textarea",
+      "description": "Multiline text input",
+      "files": [
+        "Textarea.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ]
+    },
+    {
+      "name": "label",
+      "description": "Form label",
+      "files": [
+        "Label.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ],
+      "default": true
+    },
+    {
+      "name": "field",
+      "description": "Label + control + error/hint wrapper",
+      "files": [
+        "Field.svelte"
+      ],
+      "dependencies": [
+        "label"
+      ],
+      "default": true
+    },
+    {
+      "name": "card",
+      "description": "Card with header/content/footer slots",
+      "files": [
+        "Card.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ],
+      "default": true
+    },
+    {
+      "name": "badge",
+      "description": "Status badge with semantic variants",
+      "files": [
+        "Badge.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ],
+      "default": true
+    },
+    {
+      "name": "checkbox",
+      "description": "Accessible checkbox",
+      "files": [
+        "Checkbox.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ]
+    },
+    {
+      "name": "switch",
+      "description": "Toggle switch",
+      "files": [
+        "Switch.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ]
+    },
+    {
+      "name": "select",
+      "description": "Native select styled to the token system",
+      "files": [
+        "Select.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ],
+      "default": true
+    },
+    {
+      "name": "dialog",
+      "description": "Modal dialog with focus trap + overlay",
+      "files": [
+        "Dialog.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ],
+      "default": true
+    },
+    {
+      "name": "sheet",
+      "description": "Slide-over panel (left/right)",
+      "files": [
+        "Sheet.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ]
+    },
+    {
+      "name": "dropdown-menu",
+      "description": "Dropdown menu with outside-click close",
+      "files": [
+        "DropdownMenu.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ]
+    },
+    {
+      "name": "table",
+      "description": "Data table with custom cell snippet + empty state",
+      "files": [
+        "Table.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ],
+      "default": true
+    },
+    {
+      "name": "tabs",
+      "description": "Tabs with token-styled triggers",
+      "files": [
+        "Tabs.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ]
+    },
+    {
+      "name": "toast",
+      "description": "Toast store + <Toaster> renderer",
+      "files": [
+        "toast.svelte.ts",
+        "Toaster.svelte"
+      ],
+      "default": true
+    },
+    {
+      "name": "alert",
+      "description": "Inline alert with variants",
+      "files": [
+        "Alert.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ],
+      "default": true
+    },
+    {
+      "name": "spinner",
+      "description": "Loading spinner",
+      "files": [
+        "Spinner.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ],
+      "default": true
+    },
+    {
+      "name": "separator",
+      "description": "Horizontal/vertical divider",
+      "files": [
+        "Separator.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ]
+    },
+    {
+      "name": "avatar",
+      "description": "Avatar with image + initials fallback",
+      "files": [
+        "Avatar.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ]
+    },
+    {
+      "name": "tooltip",
+      "description": "Hover/focus tooltip",
+      "files": [
+        "Tooltip.svelte"
+      ],
+      "dependencies": [
+        "utils"
+      ]
+    },
+    {
+      "name": "theme-toggle",
+      "description": "Light/dark theme switcher with persistence",
+      "files": [
+        "ThemeToggle.svelte"
+      ],
+      "default": true
+    }
   ]
 }

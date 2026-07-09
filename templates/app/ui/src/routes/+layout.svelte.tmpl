@@ -1,0 +1,40 @@
+<script lang="ts">
+	import "../app.css";
+	import { ThemeToggle } from "$ui";
+	import { forge } from "$lib/goforge";
+	let { children } = $props();
+</script>
+
+<div class="app">
+	<header class="topbar">
+		<a href="/" class="brand">⚒ {{.Name}}</a>
+		<nav class="row">
+			{#if forge.isAuthenticated}
+				<a href="/app" class="link">Dashboard</a>
+				<button class="link" onclick={() => { forge.logout(); location.href = "/"; }}>Sign out</button>
+			{:else}
+				<a href="/login" class="link">Sign in</a>
+			{/if}
+			<ThemeToggle />
+		</nav>
+	</header>
+	<main>{@render children()}</main>
+	<footer class="forge-muted">
+		Built with <a href="https://github.com/myfoxit/goforge">GoForge</a>
+		· <a href="/_/">Admin</a>
+	</footer>
+</div>
+
+<style>
+	.app { min-height: 100vh; display: flex; flex-direction: column; }
+	.topbar {
+		display: flex; align-items: center; justify-content: space-between;
+		padding: 0.85rem 1.5rem; border-bottom: 1px solid hsl(var(--border));
+	}
+	.brand { font-weight: 700; font-size: 1.05rem; }
+	.link { background: transparent; border: 0; color: hsl(var(--muted-foreground)); font: inherit; cursor: pointer; padding: 0.35rem; }
+	.link:hover { color: hsl(var(--foreground)); }
+	main { flex: 1; }
+	footer { padding: 1.5rem; text-align: center; font-size: 0.8125rem; border-top: 1px solid hsl(var(--border)); }
+	footer a { text-decoration: underline; }
+</style>

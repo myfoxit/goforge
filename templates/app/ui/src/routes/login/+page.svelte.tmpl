@@ -1,0 +1,49 @@
+<script lang="ts">
+	import { Button, Card, Field, Input, Alert } from "$ui";
+	import { forge } from "$lib/goforge";
+	import { goto } from "$app/navigation";
+
+	let email = $state("");
+	let password = $state("");
+	let error = $state("");
+	let loading = $state(false);
+
+	async function submit(e: Event) {
+		e.preventDefault();
+		error = "";
+		loading = true;
+		try {
+			await forge.login("users", email, password);
+			goto("/app");
+		} catch (err) {
+			error = (err as Error).message;
+		} finally {
+			loading = false;
+		}
+	}
+</script>
+
+<div class="auth">
+	<Card title="Sign in" description="Welcome back to {{.Name}}.">
+		<form onsubmit={submit} class="forge-stack">
+			{#if error}<Alert variant="destructive">{error}</Alert>{/if}
+			<Field label="Email" for="email">
+				<Input id="email" type="email" bind:value={email} placeholder="you@example.com" required />
+			</Field>
+			<Field label="Password" for="password">
+				<Input id="password" type="password" bind:value={password} required />
+			</Field>
+			<Button type="submit" loading={loading} class="full">Sign in</Button>
+			<p class="forge-muted center">
+				No account? <a href="/register">Create one</a>
+			</p>
+		</form>
+	</Card>
+</div>
+
+<style>
+	.auth { max-width: 400px; margin: 4rem auto; padding: 0 1rem; }
+	.center { text-align: center; font-size: 0.875rem; }
+	.center a { text-decoration: underline; }
+	:global(.full) { width: 100%; }
+</style>

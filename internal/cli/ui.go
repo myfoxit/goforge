@@ -69,6 +69,20 @@ func defaultComponents() []string {
 	return out
 }
 
+// allComponents returns every component name (used on init so the `$ui`
+// barrel re-exports resolve — the whole design system is vendored up front).
+func allComponents() []string {
+	doc, err := loadRegistry()
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(doc.Components))
+	for _, c := range doc.Components {
+		out = append(out, c.Name)
+	}
+	return out
+}
+
 // UI dispatches `forge ui <sub>`.
 func UI(args []string) error {
 	if len(args) == 0 {
@@ -256,9 +270,6 @@ func copyComponents(appDir string, m *Manifest, names []string, force bool) ([]s
 	var installed []string
 	for _, name := range order {
 		comp := index[name]
-		if _, exists := m.UI.Components[name]; exists && !force {
-			// present already; keep unless caller forces
-		}
 		for _, f := range comp.Files {
 			if err := copyRegistryFile(uiRoot, doc.Target+"/"+f, embedComponentDir+"/"+f); err != nil {
 				return nil, err
@@ -266,6 +277,11 @@ func copyComponents(appDir string, m *Manifest, names []string, force bool) ([]s
 		}
 		m.UI.Components[name] = ComponentState{Hash: hashComponent(comp)}
 		installed = append(installed, name)
+	}
+
+	// The barrel re-exports every component; ship it so `$ui` imports resolve.
+	if err := copyRegistryFile(uiRoot, doc.Target+"/index.ts", embedComponentDir+"/index.ts"); err != nil {
+		return nil, err
 	}
 	return installed, nil
 }

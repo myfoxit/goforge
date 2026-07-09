@@ -1,0 +1,6 @@
+node_modules/
+/.svelte-kit/
+/package-lock.json
+# build output is regenerated; keep the placeholder so `go build` always works
+/build/*
+!/build/index.html

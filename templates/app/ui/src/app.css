@@ -1,0 +1,6 @@
+/* Design-system tokens are vendored into src/lib/tokens.css by `forge ui`.
+   Add your app-wide global styles below the import. */
+@import "./lib/tokens.css";
+
+a { color: inherit; }
+::selection { background: hsl(var(--primary) / 0.15); }

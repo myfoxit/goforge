@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
+	"path"
 	"strings"
+	"time"
 
 	forge "github.com/myfoxit/goforge"
 )
@@ -12,7 +16,7 @@ import (
 //go:embed all:ui/build
 var uiFS embed.FS
 
-// mountUI serves the compiled SvelteKit app at / (SPA fallback included).
+// mountUI serves the compiled SvelteKit app at / with SPA fallback.
 // During development run `forge dev` instead — it serves the frontend from
 // Vite with hot reload and proxies /api here.
 func mountUI(app *forge.App) {
@@ -20,20 +24,32 @@ func mountUI(app *forge.App) {
 	if err != nil {
 		return
 	}
-	fileServer := http.FileServer(http.FS(sub))
+	start := time.Now()
 	app.Mux().HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/")
-		if path == "" {
-			path = "index.html"
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		if name == "" || strings.HasSuffix(name, "/") {
+			name += "index.html"
 		}
-		if _, err := fs.Stat(sub, path); err != nil {
-			path = "index.html" // SPA fallback
+		name = strings.TrimPrefix(path.Clean("/"+name), "/")
+
+		data, err := fs.ReadFile(sub, name)
+		if err != nil {
+			// SPA fallback for client-side routes.
+			data, err = fs.ReadFile(sub, "index.html")
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			name = "index.html"
 		}
-		if strings.HasPrefix(path, "_app/") {
+		ctype := mime.TypeByExtension(path.Ext(name))
+		if ctype == "" {
+			ctype = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", ctype)
+		if strings.HasPrefix(name, "_app/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
-		r2 := r.Clone(r.Context())
-		r2.URL.Path = "/" + path
-		fileServer.ServeHTTP(w, r2)
+		http.ServeContent(w, r, name, start, bytes.NewReader(data))
 	})
 }

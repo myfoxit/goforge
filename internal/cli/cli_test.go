@@ -126,7 +126,7 @@ func TestRegistryIntegrity(t *testing.T) {
 		}
 	}
 	// Tokens file must exist in the embed.
-	if _, err := registry.FS.ReadFile("tokens/app.css"); err != nil {
+	if _, err := registry.FS.ReadFile("tokens/tokens.css"); err != nil {
 		t.Errorf("tokens file missing: %v", err)
 	}
 	// Every .svelte in the embed should be registered.

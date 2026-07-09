@@ -1,0 +1,31 @@
+<script lang="ts">
+	import { Button, Card, Badge } from "$ui";
+</script>
+
+<section class="hero forge-container">
+	<Badge variant="secondary">Powered by GoForge</Badge>
+	<h1>Welcome to {{.Name}}</h1>
+	<p class="forge-muted lead">
+		This is your GoForge application starter. Manage your data in the
+		<a href="/_/">admin dashboard</a>, connect it to an AI over MCP, and build
+		your product on top with SvelteKit and the vendored design system.
+	</p>
+	<div class="row" style="gap: 0.75rem; justify-content: center;">
+		<Button href="/login">Sign in</Button>
+		<Button href="/register" variant="outline">Create account</Button>
+	</div>
+
+	<div class="cards">
+		<Card title="Dynamic collections" description="Define tables in the admin UI; get an instant REST API with rule-based permissions." />
+		<Card title="Batteries included" description="Auth, OAuth, MFA, email, files, realtime and multi-tenancy modules." />
+		<Card title="AI-native" description="Every collection is an MCP tool. Connect Claude and let it build and query your app." />
+	</div>
+</section>
+
+<style>
+	.hero { padding: 4rem 1.5rem; text-align: center; max-width: 780px; }
+	h1 { font-size: 2.5rem; margin: 1rem 0 0.5rem; }
+	.lead { font-size: 1.05rem; max-width: 560px; margin: 0 auto 2rem; }
+	.lead a { text-decoration: underline; }
+	.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-top: 3.5rem; text-align: left; }
+</style>
