@@ -25,6 +25,10 @@ type Registry struct {
 	// onChange subscribers are notified after any collection change
 	// (used by the API layer to rebuild routes and by realtime).
 	onChange []func(old, new *Collection)
+
+	// ruleCheck validates rule expressions at save time (wired by core to
+	// the rules compiler — schema cannot import rules directly).
+	ruleCheck func(c *Collection, rule string) error
 }
 
 func NewRegistry(d *db.DB, log *slog.Logger) *Registry {
@@ -43,6 +47,30 @@ func NewRegistry(d *db.DB, log *slog.Logger) *Registry {
 // old is nil on create; new is nil on delete.
 func (r *Registry) OnChange(fn func(old, new *Collection)) {
 	r.onChange = append(r.onChange, fn)
+}
+
+// SetRuleCheck installs the rule expression validator used on Save.
+func (r *Registry) SetRuleCheck(fn func(c *Collection, rule string) error) {
+	r.ruleCheck = fn
+}
+
+// validateRules runs the installed rule validator over all five rules.
+func (r *Registry) validateRules(c *Collection) error {
+	if r.ruleCheck == nil {
+		return nil
+	}
+	for action, rule := range map[string]*string{
+		"listRule": c.ListRule, "viewRule": c.ViewRule,
+		"createRule": c.CreateRule, "updateRule": c.UpdateRule, "deleteRule": c.DeleteRule,
+	} {
+		if rule == nil || *rule == "" {
+			continue
+		}
+		if err := r.ruleCheck(c, *rule); err != nil {
+			return fmt.Errorf("schema: invalid %s: %w", action, err)
+		}
+	}
+	return nil
 }
 
 func (r *Registry) emitChange(old, new *Collection) {
@@ -145,10 +173,13 @@ func (r *Registry) Save(ctx context.Context, c *Collection) error {
 	// Relation targets must exist.
 	for _, f := range c.Fields {
 		if f.Type == FieldRelation {
-			if target := r.Get(f.RelationCollection()); target == nil {
+			if target := r.Get(f.RelationCollection()); target == nil && f.RelationCollection() != c.Name {
 				return fmt.Errorf("schema: relation field %q references unknown collection %q", f.Name, f.RelationCollection())
 			}
 		}
+	}
+	if err := r.validateRules(c); err != nil {
+		return err
 	}
 
 	var old *Collection

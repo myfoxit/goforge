@@ -64,9 +64,7 @@ func (s *Records) ruleContext(c *schema.Collection, req *Request) *rules.Context
 // Returns core.Forbidden when the rule is locked and the caller is no
 // superuser.
 func (s *Records) compileRule(c *schema.Collection, action string, req *Request) (string, []any, error) {
-	if req.superuser() {
-		return "1=1", nil, nil
-	}
+	// Scopes bind API keys even when the key is an admin key.
 	if req != nil && req.Auth != nil && len(req.Auth.Scopes) > 0 {
 		scopeAction := action
 		if action == "list" || action == "view" {
@@ -75,6 +73,9 @@ func (s *Records) compileRule(c *schema.Collection, action string, req *Request)
 		if !req.Auth.HasScope(c.Name, scopeAction) {
 			return "", nil, core.Forbidden("The API key does not grant " + scopeAction + " access to " + c.Name + ".")
 		}
+	}
+	if req.superuser() {
+		return "1=1", nil, nil
 	}
 	rule := c.Rule(action)
 	if rule == nil {
@@ -255,15 +256,14 @@ func (s *Records) Create(ctx context.Context, collection string, req *Request) (
 	if c.IsView() {
 		return nil, core.BadRequest("View collections are read-only.")
 	}
-	// Rule gate (create rule is checked against the *incoming* data below;
+	// Scopes bind API keys even when the key is an admin key.
+	if req != nil && req.Auth != nil && len(req.Auth.Scopes) > 0 && !req.Auth.HasScope(c.Name, "create") {
+		return nil, core.Forbidden("The API key does not grant create access to " + c.Name + ".")
+	}
+	// Rule gate (create rule is checked against the *stored* row below;
 	// locked collections stop here).
-	if !req.superuser() {
-		if req.Auth != nil && len(req.Auth.Scopes) > 0 && !req.Auth.HasScope(c.Name, "create") {
-			return nil, core.Forbidden("The API key does not grant create access to " + c.Name + ".")
-		}
-		if c.CreateRule == nil {
-			return nil, core.Forbidden("Only superusers can create records here.")
-		}
+	if !req.superuser() && c.CreateRule == nil {
+		return nil, core.Forbidden("Only superusers can create records here.")
 	}
 
 	// Assign the id up front so file uploads land under the final key

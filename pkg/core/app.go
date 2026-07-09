@@ -19,6 +19,7 @@ import (
 	"github.com/myfoxit/goforge/pkg/config"
 	"github.com/myfoxit/goforge/pkg/db"
 	"github.com/myfoxit/goforge/pkg/migrations"
+	"github.com/myfoxit/goforge/pkg/rules"
 	"github.com/myfoxit/goforge/pkg/schema"
 	"github.com/myfoxit/goforge/pkg/security"
 	"github.com/myfoxit/goforge/pkg/token"
@@ -177,6 +178,16 @@ func (a *App) Bootstrap(ctx context.Context) error {
 
 	a.runner = migrations.NewRunner(d, a.log)
 	a.schema = schema.NewRegistry(d, a.log)
+	a.schema.SetRuleCheck(func(c *schema.Collection, rule string) error {
+		_, _, err := rules.CompileRule(rule, &rules.Context{
+			Dialect:       d.Dialect,
+			Collection:    c,
+			Vars:          func(string) (any, bool) { return nil, true },
+			Relations:     func(name string) *schema.Collection { return a.schema.Get(name) },
+			HiddenAllowed: true, // admins may reference hidden fields in rules
+		})
+		return err
+	})
 	a.settings = newSettings(d, a.cfg.Secret)
 	a.registerCoreSettings()
 
