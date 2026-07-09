@@ -1,12 +1,17 @@
 // Package adminui embeds and serves the GoForge admin dashboard at /_/.
-// The dist directory contains the built SvelteKit app (see ui/admin).
+// The dist directory contains the admin SPA (a dependency-free single-page
+// app that talks to the same REST API).
 package adminui
 
 import (
+	"bytes"
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
+	"path"
 	"strings"
+	"time"
 
 	"github.com/myfoxit/goforge/pkg/core"
 )
@@ -24,28 +29,41 @@ func (Module) Register(app *core.App) error {
 	if err != nil {
 		return err
 	}
-	fileServer := http.FileServer(http.FS(sub))
+	start := time.Now()
+
+	serve := func(w http.ResponseWriter, r *http.Request, name string) {
+		if name == "" || strings.HasSuffix(name, "/") {
+			name += "index.html"
+		}
+		name = strings.TrimPrefix(path.Clean("/"+name), "/")
+
+		data, err := fs.ReadFile(sub, name)
+		if err != nil {
+			// SPA fallback: unknown non-asset routes render the shell.
+			data, err = fs.ReadFile(sub, "index.html")
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			name = "index.html"
+		}
+
+		ctype := mime.TypeByExtension(path.Ext(name))
+		if ctype == "" {
+			ctype = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", ctype)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if name == "index.html" {
+			w.Header().Set("Cache-Control", "no-cache")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+		}
+		http.ServeContent(w, r, name, start, bytes.NewReader(data))
+	}
 
 	app.Mux().HandleFunc("/_/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/_")
-		path = strings.TrimPrefix(path, "/")
-		if path == "" {
-			path = "index.html"
-		}
-		// SPA fallback: unknown paths render the shell.
-		if _, err := fs.Stat(sub, path); err != nil {
-			path = "index.html"
-		}
-		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		if strings.HasPrefix(path, "_app/") || strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css") {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		} else {
-			w.Header().Set("Cache-Control", "no-cache")
-		}
-		r2 := r.Clone(r.Context())
-		r2.URL.Path = "/" + path
-		fileServer.ServeHTTP(w, r2)
+		serve(w, r, strings.TrimPrefix(r.URL.Path, "/_/"))
 	})
 	app.Mux().HandleFunc("/_", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/_/", http.StatusMovedPermanently)
