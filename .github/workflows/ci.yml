@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+      - name: Verify formatting
+        run: |
+          fmt=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$fmt" ]; then echo "gofmt needed on:"; echo "$fmt"; exit 1; fi
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race ./...
+      - name: Build forge CLI
+        run: go build ./cmd/forge
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+      - name: End-to-end smoke test
+        run: bash scripts/e2e.sh
+
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25", cache: true }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: Scaffold a UI app and build the frontend
+        run: |
+          go build -o /tmp/forge ./cmd/forge
+          /tmp/forge init /tmp/uiapp --name uiapp --module example.com/uiapp \
+            --db sqlite --ui=true --local "$PWD" --yes --git=false
+          cd /tmp/uiapp/ui && npm install && npm run build
+          cd /tmp/uiapp && go build -o /tmp/uiapp-bin .
