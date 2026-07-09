@@ -229,6 +229,11 @@ func runInitForm(name, modulePath, dbDriver, template *string, selected *[]strin
 
 	form := huh.NewForm(
 		huh.NewGroup(
+			huh.NewSelect[string]().Title("Template").
+				Description("what to scaffold — 'Full SaaS starter' gives a ready base app").
+				Options(tplOptions...).
+				Height(len(tplOptions)+2).
+				Value(template),
 			huh.NewInput().Title("Application name").
 				Description("lowercase, e.g. northplane").
 				Placeholder("myapp").
@@ -247,10 +252,6 @@ func runInitForm(name, modulePath, dbDriver, template *string, selected *[]strin
 				Value(dbDriver),
 		),
 		huh.NewGroup(
-			huh.NewSelect[string]().Title("Template").
-				Description("what to scaffold — 'Full SaaS starter' gives a ready base app").
-				Options(tplOptions...).
-				Value(template),
 			huh.NewMultiSelect[string]().Title("Modules").
 				Description("space to toggle · enter to confirm — the SaaS starter adds its own").
 				Options(moduleOptions...).
@@ -276,7 +277,7 @@ func frameworkVersion() string {
 	if Version != "" && Version != "0.1.0-dev" {
 		return "v" + strings.TrimPrefix(Version, "v")
 	}
-	return "v0.1.0"
+	return "v0.2.0"
 }
 
 func step(msg string) {
