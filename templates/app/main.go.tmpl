@@ -10,6 +10,9 @@ import (
 func main() {
 	app := forge.New()
 	app.Use(forgeModules()...)
+{{- if eq .Template "saas"}}
+	app.Use(exampleModule{}) // seeds the demo "items" collection (see seed.go)
+{{- end}}
 {{- if .UI}}
 	mountUI(app)
 {{- end}}

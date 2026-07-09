@@ -10,12 +10,13 @@ import (
 // Manifest is forge.json — the app's module/component state that makes
 // `forge add`, `forge ui update` and `forge update` deterministic.
 type Manifest struct {
-	Name    string   `json:"name"`
-	Module  string   `json:"module"`
-	GoForge string   `json:"goforge"`
-	DB      string   `json:"db"`
-	Modules []string `json:"modules"`
-	UI      UIState  `json:"ui"`
+	Name     string   `json:"name"`
+	Module   string   `json:"module"`
+	GoForge  string   `json:"goforge"`
+	DB       string   `json:"db"`
+	Template string   `json:"template,omitempty"` // minimal | demo | saas
+	Modules  []string `json:"modules"`
+	UI       UIState  `json:"ui"`
 }
 
 // UIState tracks the frontend and its vendored design-system components.

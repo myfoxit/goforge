@@ -1,0 +1,42 @@
+{{if eq .Template "saas"}}package main
+
+import (
+	"context"
+
+	"github.com/myfoxit/goforge/pkg/core"
+	"github.com/myfoxit/goforge/pkg/schema"
+)
+
+// exampleModule seeds a demo "items" collection so the app ships with a
+// working data view (see ui: /app/data). It is owner-scoped: every user only
+// sees their own rows. Delete this file (and its app.Use in main.go) — or just
+// remove the collection in the admin at /_/ — once you build your own.
+type exampleModule struct{}
+
+func (exampleModule) ID() string { return "example" }
+
+func (exampleModule) Register(app *core.App) error {
+	app.OnBootstrap.Add(func(e *core.BootstrapEvent) error {
+		if e.App.Schema().Get("items") != nil {
+			return nil // already created (or re-created by the user)
+		}
+		owner := "owner = @request.auth.id"
+		authed := `@request.auth.id != ""`
+		return e.App.Schema().Save(context.Background(), &schema.Collection{
+			Name: "items", Type: schema.TypeBase,
+			Fields: []*schema.Field{
+				{Name: "name", Type: schema.FieldText, Required: true,
+					Options: map[string]any{"max": float64(120)}},
+				{Name: "status", Type: schema.FieldSelect,
+					Options: map[string]any{"values": []any{"todo", "active", "done"}}},
+				{Name: "qty", Type: schema.FieldNumber},
+				{Name: "owner", Type: schema.FieldRelation, Required: true,
+					Options: map[string]any{"collection": "users"}},
+			},
+			ListRule: &owner, ViewRule: &owner,
+			CreateRule: &authed, UpdateRule: &owner, DeleteRule: &owner,
+		})
+	})
+	return nil
+}
+{{end}}

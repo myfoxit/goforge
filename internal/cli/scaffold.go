@@ -24,6 +24,35 @@ type ScaffoldData struct {
 	// a local framework checkout (development mode).
 	LocalFramework string
 	UI             bool
+	// Template is the scaffold flavor (minimal|demo|saas). It selects which
+	// _variants/<Template> frontend overlay is rendered.
+	Template string
+}
+
+// variantMarker names the directory whose immediate children are per-template
+// overlays: templates/app/ui/src/_variants/<template>/... maps onto
+// templates/app/ui/src/... for the matching template and is pruned otherwise.
+const variantMarker = "_variants"
+
+// resolveVariant maps a scaffold-relative path through the _variants overlay.
+// It returns the rewritten path (with the _variants/<template> prefix removed)
+// and whether the path belongs to a different template and should be skipped.
+func resolveVariant(rel, template string) (string, bool) {
+	parts := strings.Split(rel, "/")
+	for i, p := range parts {
+		if p != variantMarker {
+			continue
+		}
+		if i+1 >= len(parts) {
+			// the marker directory itself — collapse it, keep descending
+			return strings.Join(append(parts[:i:i], parts[i+1:]...), "/"), false
+		}
+		if parts[i+1] != template {
+			return "", true // a different template's overlay — prune it
+		}
+		return strings.Join(append(parts[:i:i], parts[i+2:]...), "/"), false
+	}
+	return rel, false
 }
 
 // RenderScaffold writes the app template into targetDir.
@@ -44,6 +73,19 @@ func RenderScaffold(targetDir string, data ScaffoldData) error {
 			}
 			return nil
 		}
+		// Resolve the per-template frontend overlay: keep this template's
+		// _variants subtree (rewriting the path) and prune the others.
+		mapped, skip := resolveVariant(rel, data.Template)
+		if skip {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		rel = mapped
+		if rel == "" {
+			return nil
+		}
 		target := filepath.Join(targetDir, rel)
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
@@ -58,6 +100,11 @@ func RenderScaffold(targetDir string, data ScaffoldData) error {
 			rendered, err := renderTemplate(rel, string(raw), data)
 			if err != nil {
 				return err
+			}
+			// A template that renders to nothing (e.g. fully guarded by a
+			// {{if}} that didn't fire) produces no file.
+			if len(bytes.TrimSpace(rendered)) == 0 {
+				return nil
 			}
 			raw = rendered
 		}

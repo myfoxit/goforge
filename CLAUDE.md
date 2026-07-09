@@ -22,6 +22,10 @@ compiles to a single binary running on SQLite, Postgres or MySQL.
 - `ui/registry` — the design system (Svelte 5 components + tokens + `registry.json`).
 - `templates/app` — the `forge init` scaffold (`.tmpl` files rendered with Go
   `text/template`; note Go uses `{{ }}`, Svelte uses `{ }`, so they don't collide).
+  Frontend flavors live under `ui/src/_variants/<template>/…` and are overlaid onto
+  `ui/src/…` for the chosen template (`minimal`/`demo`/`saas`), defined in
+  `internal/cli/catalog.go` (`Templates`). A `.tmpl` that renders to only
+  whitespace is skipped, so files can be fully guarded by `{{if eq .Template …}}`.
 - `docs/`, `scripts/e2e.sh`.
 
 ## Conventions

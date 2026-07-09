@@ -44,7 +44,8 @@ func Init(args []string) error {
 	modulePath := fs.String("module", "", "Go module path (e.g. github.com/you/app)")
 	dbDriver := fs.String("db", "", "database: sqlite|postgres|mysql")
 	moduleList := fs.String("modules", "", "comma-separated module ids")
-	withUI := fs.Bool("ui", true, "scaffold the SvelteKit frontend")
+	template := fs.String("template", "", "frontend template: minimal|demo|saas")
+	withUI := fs.Bool("ui", true, "scaffold a frontend (--ui=false ⇒ minimal, API-only)")
 	local := fs.String("local", "", "path to a local goforge checkout (adds replace directive)")
 	yes := fs.Bool("yes", false, "accept defaults, no prompts")
 	gitInit := fs.Bool("git", true, "initialize a git repository")
@@ -67,12 +68,31 @@ func Init(args []string) error {
 		*dbDriver = "sqlite"
 	}
 
+	// Resolve the scaffold template. --ui=false is shorthand for the API-only
+	// "minimal" flavor; an explicit --template always wins.
+	templateID := *template
+	if templateID == "" && !*withUI {
+		templateID = "minimal"
+	}
+
 	if interactive {
+		if templateID == "" {
+			templateID = "saas" // highlight the full starter by default
+		}
 		fmt.Println(TitleStyle.Render("⚒  GoForge") + DimStyle.Render("  — let's build a SaaS"))
-		if err := runInitForm(name, modulePath, dbDriver, &selected, withUI); err != nil {
+		if err := runInitForm(name, modulePath, dbDriver, &templateID, &selected); err != nil {
 			return err
 		}
 	}
+	if templateID == "" {
+		templateID = "demo" // non-interactive default preserves prior behavior
+	}
+	tpl, ok := TemplateByID(templateID)
+	if !ok {
+		return fmt.Errorf("unknown template %q (want minimal|demo|saas)", templateID)
+	}
+	// A template pulls in the backend modules it depends on.
+	selected = append(selected, tpl.Modules...)
 	if *name == "" {
 		return fmt.Errorf("missing --name")
 	}
@@ -125,7 +145,8 @@ func Init(args []string) error {
 		Modules:        modules,
 		GoForgeVersion: frameworkVersion(),
 		LocalFramework: localPath,
-		UI:             *withUI,
+		UI:             tpl.UI,
+		Template:       tpl.ID,
 	}
 	step("Scaffolding application")
 	if err := RenderScaffold(abs, data); err != nil {
@@ -136,14 +157,15 @@ func Init(args []string) error {
 	}
 
 	manifest := &Manifest{
-		Name:    *name,
-		Module:  *modulePath,
-		GoForge: data.GoForgeVersion,
-		DB:      *dbDriver,
-		Modules: modules,
-		UI:      UIState{Components: map[string]ComponentState{}},
+		Name:     *name,
+		Module:   *modulePath,
+		GoForge:  data.GoForgeVersion,
+		DB:       *dbDriver,
+		Template: tpl.ID,
+		Modules:  modules,
+		UI:       UIState{Components: map[string]ComponentState{}},
 	}
-	if *withUI {
+	if tpl.UI {
 		manifest.UI.Path = "ui"
 		step("Vendoring design system components")
 		if _, err := copyComponents(abs, manifest, allComponents(), false); err != nil {
@@ -171,7 +193,7 @@ func Init(args []string) error {
 		"go run . serve",
 		"open http://localhost:8090/_/   # admin",
 	}
-	if *withUI {
+	if tpl.UI {
 		next = append(next, "forge dev                       # api + frontend hot reload")
 	}
 	fmt.Println()
@@ -182,10 +204,14 @@ func Init(args []string) error {
 	return nil
 }
 
-func runInitForm(name, modulePath, dbDriver *string, selected *[]string, withUI *bool) error {
+func runInitForm(name, modulePath, dbDriver, template *string, selected *[]string) error {
 	dbOptions := make([]huh.Option[string], len(DBDrivers))
 	for i, d := range DBDrivers {
 		dbOptions[i] = huh.NewOption(fmt.Sprintf("%s — %s", d.Label, d.Desc), d.ID)
+	}
+	tplOptions := make([]huh.Option[string], len(Templates))
+	for i, t := range Templates {
+		tplOptions[i] = huh.NewOption(fmt.Sprintf("%-18s %s", t.Label, DimStyle.Render(t.Desc)), t.ID)
 	}
 	moduleOptions := []huh.Option[string]{}
 	defaults := map[string]bool{}
@@ -221,14 +247,15 @@ func runInitForm(name, modulePath, dbDriver *string, selected *[]string, withUI 
 				Value(dbDriver),
 		),
 		huh.NewGroup(
+			huh.NewSelect[string]().Title("Template").
+				Description("what to scaffold — 'Full SaaS starter' gives a ready base app").
+				Options(tplOptions...).
+				Value(template),
 			huh.NewMultiSelect[string]().Title("Modules").
-				Description("space to toggle · enter to confirm — add more later with `forge add`").
+				Description("space to toggle · enter to confirm — the SaaS starter adds its own").
 				Options(moduleOptions...).
 				Height(len(moduleOptions)+2).
 				Value(selected),
-			huh.NewConfirm().Title("Scaffold SvelteKit frontend?").
-				Description("Landing page + auth pages + vendored design system").
-				Value(withUI),
 		),
 	)
 	return form.Run()

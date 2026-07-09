@@ -1,6 +1,26 @@
-// Minimal class-name combiner — no clsx/tailwind-merge dependency.
-export function cn(...parts: Array<string | false | null | undefined>): string {
-	return parts.filter(Boolean).join(" ");
+// Minimal class-name combiner — no clsx/tailwind-merge dependency. Accepts the
+// same shapes as Svelte's `class` attribute (strings, arrays, objects).
+export type ClassInput =
+	| string
+	| number
+	| bigint
+	| boolean
+	| null
+	| undefined
+	| ClassInput[]
+	| Record<string, unknown>;
+
+export function cn(...parts: ClassInput[]): string {
+	const out: string[] = [];
+	for (const p of parts) {
+		if (!p) continue;
+		if (typeof p === "string" || typeof p === "number") out.push(String(p));
+		else if (Array.isArray(p)) out.push(cn(...p));
+		else if (typeof p === "object") {
+			for (const [k, v] of Object.entries(p)) if (v) out.push(k);
+		}
+	}
+	return out.join(" ");
 }
 
 // Focus-trap + escape handler used by overlay components (dialog, sheet).

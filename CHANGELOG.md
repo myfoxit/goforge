@@ -5,6 +5,24 @@ All notable changes to GoForge are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Scaffold templates** — `forge init` now offers three flavors via a template
+  picker (or `--template minimal|demo|saas`):
+  - **minimal** — API + admin only, no frontend.
+  - **demo** — the landing/auth pages + realtime notes demo (previous default).
+  - **saas** — a complete base SaaS app on top of the existing modules: an
+    authenticated app shell (sidebar, topbar, account menu), the full auth suite
+    (login, register, password reset, email verification, OAuth sign-in, MFA
+    challenge + enrolment), account/profile management, admin user management with
+    role editing, organizations/teams with member invites, a billing surface, and
+    a searchable/sortable/paginated data view (table + list) over a seeded,
+    removable example collection. Choosing it auto-enables the modules it needs
+    (`auth`, `perm`, `mail`, `orgs`, `oauth`, `mfa`, …).
+  - Frontend variants live under `templates/app/ui/src/_variants/<template>/` and
+    are overlaid onto the app at scaffold time; the design-system `cn()` helper now
+    accepts Svelte 5 `ClassValue` shapes so generated apps typecheck clean.
+
 ### Added — initial release
 
 - **Dynamic collections** (base / auth / view) with runtime DDL sync across

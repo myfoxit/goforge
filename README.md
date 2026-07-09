@@ -20,8 +20,8 @@ You want to build several SaaS products without rebuilding the plumbing each tim
 # 1. Install the CLI
 go install github.com/myfoxit/goforge/cmd/forge@latest
 
-# 2. Scaffold an app (interactive module picker — check what you want)
-forge init myapp
+# 2. Scaffold an app (interactive: pick a template, modules and DB)
+forge init myapp            # choose "Full SaaS starter" for a ready base app
 cd myapp
 
 # 3. Create an admin and run it
@@ -34,6 +34,16 @@ open http://localhost:8090/_/
 
 That's a single self-contained binary serving a REST API, an admin UI, an MCP
 server, realtime SSE and (optionally) your SvelteKit frontend.
+
+`forge init` offers three **templates**:
+
+| Template | Frontend |
+| --- | --- |
+| **Minimal** | API + admin only — no frontend |
+| **Demo** | Landing + auth pages + a realtime notes demo |
+| **Full SaaS starter** | A complete base app: app shell (sidebar + account menu), full auth suite (login/register/reset/verify/**OAuth**/**MFA**), account & profile, user management, **organizations/teams** with invites, a billing surface, and a searchable, sortable, paginated **data view** (table + list) over a seeded example collection |
+
+Pass `--template saas` (or `minimal`/`demo`) to skip the prompt.
 
 ## The pitch in one screen
 
@@ -141,7 +151,8 @@ forge release --version 1.2.0 --url https://cdn/... --key forge-release.key
 ## The CLI
 
 ```
-forge init [dir]            Create an app (interactive module + DB picker)
+forge init [dir]            Create an app (template + module + DB picker)
+                            --template minimal|demo|saas
 forge add / remove          Toggle backend modules
 forge ui add / update       Vendor & refresh design-system components
 forge dev                   Run the API + SvelteKit dev server together

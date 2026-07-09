@@ -24,13 +24,27 @@ export interface ListOptions {
 	expand?: string;
 }
 
+export interface OAuthProvider {
+	name: string;
+	displayName: string;
+	authURL: string;
+}
+
+export interface AuthMethods {
+	password: { enabled: boolean; identityFields: string[] };
+	oauth2: { enabled: boolean; providers: OAuthProvider[] };
+	mfa: { enabled: boolean };
+}
+
 export class ForgeError extends Error {
 	status: number;
 	data?: Record<string, string>;
-	constructor(message: string, status: number, data?: Record<string, string>) {
+	body?: unknown; // full parsed response body
+	constructor(message: string, status: number, data?: Record<string, string>, body?: unknown) {
 		super(message);
 		this.status = status;
 		this.data = data;
+		this.body = body;
 	}
 }
 
@@ -90,20 +104,30 @@ export class GoForge {
 		}
 		if (!res.ok) {
 			const d = data as { message?: string; data?: Record<string, string> };
-			throw new ForgeError(d?.message || res.statusText, res.status, d?.data);
+			throw new ForgeError(d?.message || res.statusText, res.status, d?.data, data);
 		}
 		return data as T;
 	}
 
 	// ---- auth ----
 	async login(collection: string, identity: string, password: string): Promise<AuthRecord> {
-		const res = await this.send<{ token: string; record: AuthRecord }>(
-			"POST",
-			`/api/collections/${collection}/auth-with-password`,
-			{ identity, password },
-		);
-		if ((res as { mfaRequired?: boolean }).mfaRequired) {
-			throw new ForgeError("MFA required", 401, { mfaToken: (res as { mfaToken: string }).mfaToken });
+		let res: { token: string; record: AuthRecord };
+		try {
+			res = await this.send<{ token: string; record: AuthRecord }>(
+				"POST",
+				`/api/collections/${collection}/auth-with-password`,
+				{ identity, password },
+			);
+		} catch (err) {
+			// A password login with MFA enabled answers 401 + { mfaRequired,
+			// mfaToken }. Surface the short-lived token so the caller can
+			// complete the second factor via completeMFA().
+			const fe = err as ForgeError;
+			const body = fe?.body as { mfaRequired?: boolean; mfaToken?: string } | undefined;
+			if (fe?.status === 401 && body?.mfaRequired && body.mfaToken) {
+				throw new ForgeError("MFA required", 401, { mfaToken: body.mfaToken });
+			}
+			throw err;
 		}
 		this.token = res.token;
 		this.record = res.record;
@@ -124,6 +148,44 @@ export class GoForge {
 		this.record = res.record;
 		this.persist();
 		return res.record;
+	}
+
+	// completeMFA finishes a password login that answered with mfaRequired,
+	// exchanging the short-lived mfaToken + TOTP code for a full session.
+	async completeMFA(collection: string, mfaToken: string, code: string): Promise<AuthRecord> {
+		const res = await this.send<{ token: string; record: AuthRecord }>(
+			"POST",
+			`/api/mfa/verify`,
+			{ mfaToken, code },
+		);
+		this.token = res.token;
+		this.record = res.record;
+		this.persist();
+		return res.record;
+	}
+
+	// authMethods reports which sign-in methods a collection offers (password,
+	// enabled OAuth providers, whether MFA is on) so the UI can render buttons.
+	authMethods(collection: string): Promise<AuthMethods> {
+		return this.send("GET", `/api/collections/${collection}/auth-methods`);
+	}
+
+	// finishOAuth consumes the "#oauthToken=..." fragment left by the OAuth
+	// callback redirect, adopts the session, and cleans the URL. Returns true
+	// when a token was present and the session was established.
+	async finishOAuth(collection = "users"): Promise<boolean> {
+		if (typeof location === "undefined") return false;
+		const m = location.hash.match(/oauthToken=([^&]+)/);
+		if (!m) return false;
+		this.token = decodeURIComponent(m[1]);
+		history.replaceState(null, "", location.pathname + location.search);
+		try {
+			await this.refresh(collection);
+			return true;
+		} catch {
+			this.logout();
+			return false;
+		}
 	}
 
 	requestVerification(collection: string, email: string) {

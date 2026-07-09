@@ -160,6 +160,98 @@ func TestHashComponentDeterministic(t *testing.T) {
 	}
 }
 
+func TestResolveVariant(t *testing.T) {
+	cases := []struct {
+		rel, tmpl, want string
+		skip            bool
+	}{
+		// matching overlay is rewritten to the canonical path
+		{"ui/src/_variants/saas/routes/login/+page.svelte", "saas", "ui/src/routes/login/+page.svelte", false},
+		{"ui/src/_variants/saas/lib/api.ts", "saas", "ui/src/lib/api.ts", false},
+		// non-matching overlay is pruned
+		{"ui/src/_variants/demo/routes/+page.svelte", "saas", "", true},
+		{"ui/src/_variants/saas/routes", "demo", "", true},
+		// the marker dir itself collapses away, walking continues
+		{"ui/src/_variants", "saas", "ui/src", false},
+		// unrelated paths pass through untouched
+		{"main.go.tmpl", "saas", "main.go.tmpl", false},
+		{"ui/src/lib/goforge.ts", "saas", "ui/src/lib/goforge.ts", false},
+	}
+	for _, c := range cases {
+		got, skip := resolveVariant(c.rel, c.tmpl)
+		if skip != c.skip || (!skip && got != c.want) {
+			t.Errorf("resolveVariant(%q,%q) = (%q,%v), want (%q,%v)", c.rel, c.tmpl, got, skip, c.want, c.skip)
+		}
+	}
+}
+
+func TestTemplateByID(t *testing.T) {
+	for _, id := range []string{"minimal", "demo", "saas"} {
+		if _, ok := TemplateByID(id); !ok {
+			t.Errorf("template %q missing from catalog", id)
+		}
+	}
+	if _, ok := TemplateByID("nope"); ok {
+		t.Error("unknown template should not resolve")
+	}
+	saas, _ := TemplateByID("saas")
+	if !saas.UI || !contains(saas.Modules, "orgs") {
+		t.Errorf("saas template should enable UI + orgs: %+v", saas)
+	}
+}
+
+func TestRenderScaffoldTemplates(t *testing.T) {
+	base := ScaffoldData{Name: "acme", Module: "example.com/acme", DB: "sqlite", GoForgeVersion: "v0.1.0"}
+
+	// saas: full frontend + seeded example module, no leftover overlay dir.
+	saasDir := t.TempDir()
+	saas := base
+	saas.UI, saas.Template = true, "saas"
+	if err := RenderScaffold(saasDir, saas); err != nil {
+		t.Fatal(err)
+	}
+	mustExist(t, saasDir, "ui/src/routes/app/account/+page.svelte")
+	mustExist(t, saasDir, "ui/src/routes/app/team/+page.svelte")
+	mustExist(t, saasDir, "seed.go")
+	if b := readFile(t, saasDir+"/ui/src/lib/brand.ts"); !strings.Contains(b, `"acme"`) {
+		t.Errorf("brand.ts not stamped with app name: %q", b)
+	}
+	if _, err := os.Stat(saasDir + "/ui/src/_variants"); err == nil {
+		t.Error("saas scaffold leaked the _variants overlay dir")
+	}
+
+	// demo: the notes demo frontend, no seed.go.
+	demoDir := t.TempDir()
+	demo := base
+	demo.UI, demo.Template = true, "demo"
+	if err := RenderScaffold(demoDir, demo); err != nil {
+		t.Fatal(err)
+	}
+	mustExist(t, demoDir, "ui/src/routes/app/+page.svelte")
+	if _, err := os.Stat(demoDir + "/seed.go"); err == nil {
+		t.Error("demo scaffold should not include seed.go")
+	}
+
+	// minimal: API-only, no ui tree.
+	minDir := t.TempDir()
+	min := base
+	min.UI, min.Template = false, "minimal"
+	if err := RenderScaffold(minDir, min); err != nil {
+		t.Fatal(err)
+	}
+	mustExist(t, minDir, "main.go")
+	if _, err := os.Stat(minDir + "/ui"); err == nil {
+		t.Error("minimal scaffold should not include a ui tree")
+	}
+}
+
+func mustExist(t *testing.T, dir, rel string) {
+	t.Helper()
+	if _, err := os.Stat(dir + "/" + rel); err != nil {
+		t.Errorf("expected scaffolded file %q: %v", rel, err)
+	}
+}
+
 func contains(s []string, v string) bool {
 	for _, x := range s {
 		if x == v {

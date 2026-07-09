@@ -33,6 +33,50 @@ var Catalog = []ModuleDef{
 	{ID: "backups", Label: "Backups", Desc: "One-click data + files snapshots", Import: "pkg/backups", Expr: "backups.Module{}"},
 }
 
+// TemplateDef describes a scaffold flavor: which frontend variant to render
+// and which backend modules it needs.
+type TemplateDef struct {
+	ID      string
+	Label   string
+	Desc    string
+	UI      bool     // render a SvelteKit frontend
+	Variant string   // _variants/<Variant> overlay to render (empty = none)
+	Modules []string // backend modules the template requires (unioned into the selection)
+}
+
+// Templates lists the scaffold flavors offered by `forge init`.
+var Templates = []TemplateDef{
+	{
+		ID: "minimal", Label: "Minimal API",
+		Desc:    "Backend + embedded admin only — no frontend",
+		UI:      false,
+		Variant: "",
+	},
+	{
+		ID: "demo", Label: "Demo",
+		Desc:    "Landing + auth pages + a realtime notes demo",
+		UI:      true,
+		Variant: "demo",
+	},
+	{
+		ID: "saas", Label: "Full SaaS starter",
+		Desc:    "App shell, full auth, account, users, orgs/team, billing, data views",
+		UI:      true,
+		Variant: "saas",
+		Modules: []string{"auth", "perm", "mail", "adminui", "mcp", "logs", "update", "oauth", "mfa", "orgs"},
+	},
+}
+
+// TemplateByID looks up a template flavor.
+func TemplateByID(id string) (TemplateDef, bool) {
+	for _, t := range Templates {
+		if t.ID == id {
+			return t, true
+		}
+	}
+	return TemplateDef{}, false
+}
+
 // CatalogByID indexes the catalog.
 func CatalogByID() map[string]ModuleDef {
 	out := make(map[string]ModuleDef, len(Catalog))
