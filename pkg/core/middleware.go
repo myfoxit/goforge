@@ -73,18 +73,21 @@ func (s *statusRecorder) Flush() {
 	}
 }
 
-// RequestLogFunc receives finished requests (wired by the logs module).
+// RequestLogFunc receives finished requests (logs module, metrics, ...).
 type RequestLogFunc func(r *http.Request, status int, dur time.Duration, auth *Auth)
 
-var requestLogFn RequestLogFunc
+var requestLogFns []RequestLogFunc
 var requestLogMu sync.RWMutex
 
-// SetRequestLogFunc installs the request log sink.
-func SetRequestLogFunc(fn RequestLogFunc) {
+// AddRequestLogFunc registers a request sink (multiple allowed).
+func AddRequestLogFunc(fn RequestLogFunc) {
 	requestLogMu.Lock()
-	requestLogFn = fn
+	requestLogFns = append(requestLogFns, fn)
 	requestLogMu.Unlock()
 }
+
+// SetRequestLogFunc is a legacy alias for AddRequestLogFunc.
+func SetRequestLogFunc(fn RequestLogFunc) { AddRequestLogFunc(fn) }
 
 // WithLogger logs requests to slog (debug) and the optional db sink.
 func (a *App) WithLogger() Middleware {
@@ -96,9 +99,9 @@ func (a *App) WithLogger() Middleware {
 			dur := time.Since(start)
 			a.log.Debug("request", "method", r.Method, "path", r.URL.Path, "status", rec.status, "dur", dur.String())
 			requestLogMu.RLock()
-			fn := requestLogFn
+			fns := requestLogFns
 			requestLogMu.RUnlock()
-			if fn != nil {
+			for _, fn := range fns {
 				fn(r, rec.status, dur, AuthFromContext(r.Context()))
 			}
 		})

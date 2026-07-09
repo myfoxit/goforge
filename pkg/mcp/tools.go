@@ -212,14 +212,14 @@ func adminTools() []toolDef {
 			InputSchema: obj(map[string]any{}),
 		},
 		{
-			Name:        "collections_save",
+			Name: "collections_save",
 			Description: "Create or update a collection: fields (columns), indexes and API access rules. " +
 				"Rules: null = superusers only, \"\" = public, or an expression like \"owner = @request.auth.id\". " +
 				"Existing fields are matched by name; omitting an existing field DELETES its column.",
 			InputSchema: obj(map[string]any{
-				"name": map[string]any{"type": "string"},
-				"type": map[string]any{"type": "string", "enum": []string{"base", "auth", "view"}, "description": "default base"},
-				"fields": map[string]any{"type": "array", "items": fieldProps},
+				"name":       map[string]any{"type": "string"},
+				"type":       map[string]any{"type": "string", "enum": []string{"base", "auth", "view"}, "description": "default base"},
+				"fields":     map[string]any{"type": "array", "items": fieldProps},
 				"listRule":   map[string]any{"type": []string{"string", "null"}},
 				"viewRule":   map[string]any{"type": []string{"string", "null"}},
 				"createRule": map[string]any{"type": []string{"string", "null"}},
